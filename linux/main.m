@@ -271,10 +271,13 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
         @"log": @{ @"level": @"warn", @"timestamp": @YES },
         @"inbounds": @[ @{ @"type": @"tun", @"tag": @"tun-in", @"address": @[@"172.19.0.1/30"], @"mtu": @9000,
                            @"auto_route": @YES, @"strict_route": @NO, @"stack": @"gvisor" } ],
-        @"outbounds": @[ out, @{ @"type": @"direct", @"tag": @"direct" }, @{ @"type": @"block", @"tag": @"block" } ],
+        @"outbounds": @[ @{ @"type": @"urltest", @"tag": @"auto", @"outbounds": @[ tag ],
+                             @"url": @"http://cp.cloudflare.com/generate_204",
+                             @"interval": @"20s", @"tolerance": @50 },
+                          out, @{ @"type": @"direct", @"tag": @"direct" }, @{ @"type": @"block", @"tag": @"block" } ],
         @"route": @{ @"rules": @[ @{ @"action": @"sniff" }, @{ @"protocol": @"dns", @"action": @"hijack-dns" },
                                   @{ @"ip_is_private": @YES, @"outbound": @"direct" } ],
-                     @"final": tag, @"auto_detect_interface": @YES },
+                     @"final": @"auto", @"auto_detect_interface": @YES },
         @"experimental": @{ @"cache_file": @{ @"enabled": @YES } }
     };
     NSData *d = [NSJSONSerialization dataWithJSONObject:cfg options:NSJSONWritingPrettyPrinted error:NULL];
