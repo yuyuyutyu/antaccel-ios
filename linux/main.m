@@ -140,24 +140,19 @@ static void ApiRequest(NSString *base, NSString *path, NSString *method, NSDicti
     [req setValue:@"application/json; charset=utf-8" forHTTPHeaderField:@"Content-Type"];
     [req setValue:@"okhttp/4.12.0" forHTTPHeaderField:@"User-Agent"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    // BFF 网关要的一批上下文头,缺了就回 9009 header参数错误
+    // BFF 网关要求的上下文头(从 classes.dex 的 Li10.a 拦截器里抠出来的真实取值)
     NSString *ts = [NSString stringWithFormat:@"%lld", (long long)([[NSDate date] timeIntervalSince1970] * 1000)];
     NSString *dev = [[[UIDevice currentDevice] identifierForVendor] UUIDString] ?: @"unknown";
     NSDictionary *extra = @{
-        @"x-platform": @"android",
-        @"x-os": @"android",
-        @"x-client-platform": @"android",
-        @"x-app-version": @"1.0.5",
-        @"x-version": @"1.0.5",
-        @"x-app-version-code": @"4",
-        @"x-channel": @"official",
-        @"x-lang": @"zh-CN",
-        @"x-timestamp": ts,
-        @"x-nonce": [NSString stringWithFormat:@"%08x", (unsigned)arc4random()],
-        @"x-device-id": dev,
-        @"x-device-model": [[UIDevice currentDevice] model] ?: @"iPhone",
-        @"x-request-id": [[NSUUID UUID] UUIDString],
-        @"x-sign": @"0"
+        @"channel-code": @"free",
+        @"distribution-channel": @"free",
+        @"platform": @"android",
+        @"model": @"iPhone",
+        @"locale": @"zh-CN",
+        @"timezone": @"Asia/Shanghai",
+        @"device-id": dev,
+        @"user-agent": @"Dalvik/2.1.0 (Linux; U; Android 13; iPhone) ArkNetAndroid",
+        @"x-timestamp": ts
     };
     for (NSString *k in extra) { [req setValue:extra[k] forHTTPHeaderField:k]; }
     if (token.length) {
@@ -472,6 +467,22 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
     [self presentViewController:vc animated:YES completion:nil];
 }
 
+- (void)importFromClipboard {
+    NSString *s = UIPasteboard.generalPasteboard.string;
+    if (s.length < 5) { [self alert:@"剪贴板是空的。先在别处复制 sing-box 配置或节点链接"]; return; }
+    BOOL isJSON = ([s rangeOfString:@"{"].location != NSNotFound) && ([s rangeOfString:@"outbounds"].location != NSNotFound || [s rangeOfString:@"inbounds"].location != NSNotFound);
+    NSString *ext = isJSON ? @"json" : @"txt";
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:[@"antiaccel-import." stringByAppendingString:ext]];
+    NSError *err = nil;
+    [s writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:&err];
+    if (err) { [self alert:[NSString stringWithFormat:@"写文件失败: %@", err.localizedDescription]]; return; }
+    Log(@"从剪贴板导入 %lu 字节(%@)", (unsigned long)s.length, ext);
+    UIActivityViewController *vc = [[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:path]]
+                                                                    applicationActivities:nil];
+    vc.popoverPresentationController.sourceView = self.view;
+    [self presentViewController:vc animated:YES completion:nil];
+}
+
 - (void)openClient {
     NSURL *u = [NSURL URLWithString:@"sing-box://"];
     if (!u) { [self alert:@"scheme 构造失败"]; return; }
@@ -501,7 +512,7 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) { return 3; }
     if (section == 1) { return MAX((NSInteger)self.nodes.count, 1); }
-    return 3;
+    return 4;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -543,8 +554,8 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
         cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@:%@", proto, host, port];
         return cell;
     }
-    NSArray *titles = @[@"复制 sing-box 配置", @"分享配置文件(存到『文件』)", @"打开 sing-box"];
-    NSArray *subs = @[@"粘到客户端里直接导入", @"sing-box -> 配置 -> 从文件导入", @"没装就先装,再回来分享"];
+    NSArray *titles = @[@"复制 sing-box 配置", @"分享配置文件(存到『文件』)", @"从剪贴板导入配置", @"打开 sing-box"];
+    NSArray *subs = @[@"粘到客户端里直接导入", @"sing-box -> 配置 -> 从文件导入", @"别处复制好的配置/节点,一键转成文件", @"没装就先装,再回来分享"];
     cell.textLabel.text = titles[indexPath.row];
     cell.detailTextLabel.text = subs[indexPath.row];
     cell.textLabel.textColor = [UIColor systemBlueColor];
@@ -562,6 +573,7 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
     if (indexPath.section == 2) {
         if (indexPath.row == 0) { [self copyConfig]; }
         else if (indexPath.row == 1) { [self shareConfig]; }
+        else if (indexPath.row == 2) { [self importFromClipboard]; }
         else { [self openClient]; }
     }
 }
