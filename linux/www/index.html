@@ -11,8 +11,8 @@
   body { margin:0; padding:14px 14px 48px; font-family:-apple-system,"PingFang SC",Helvetica,sans-serif;
          background:var(--bg); color:var(--text); -webkit-text-size-adjust:100%; }
   .hero { background:linear-gradient(135deg,#0a84ff,#5e5ce6); border-radius:16px; padding:18px; color:#fff; margin-bottom:14px; }
-  .hero h1 { margin:0 0 6px; font-size:20px; font-weight:700; }
-  .hero p { margin:0; font-size:13px; opacity:.9; }
+  .hero h1 { margin:0 0 8px; font-size:20px; line-height:1.35; font-weight:700; }
+  .hero p { margin:0; font-size:12px; line-height:1.45; opacity:.9; word-break:break-all; }
   .search { width:100%; padding:11px 14px; border-radius:12px; border:1px solid #d8d8de;
             background:var(--card); font-size:15px; outline:none; margin-bottom:14px; }
   .search:focus { border-color:var(--accent); }
@@ -34,8 +34,8 @@
 </head>
 <body>
   <div class="hero">
-    <h1>安心加速器 · iOS 壳</h1>
-    <p>界面数据取自原 APK 的 nav_default_home.json</p>
+    <h1>安心加速器 · iOS</h1>
+    <p>导航数据取自原包 assets/nav_default_home.json</p>
   </div>
   <input id="q" class="search" type="search" placeholder="搜索站点名称 / 地址">
   <div id="grid" class="grid"></div>
@@ -59,10 +59,17 @@
       window.__pending[key] = callback;
       request.callback = key;
     }
+    var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeObject;
+    if (!handler) { return; }
+    var payload = JSON.stringify(request);
     try {
-      window.webkit.messageHandlers.nativeObject.postWithCallback(JSON.stringify(request));
-    } catch (e) {
-      alert("原生桥接不可用: " + e);
+      if (typeof handler.postWithCallback === "function") {
+        handler.postWithCallback(payload);
+      } else if (typeof handler.postMessage === "function") {
+        handler.postMessage(payload);
+      }
+    } catch (err) {
+      console.log("bridge error: " + err);
     }
   }
 
@@ -111,11 +118,8 @@
         tag.textContent = "推荐";
         a.appendChild(tag);
       }
-      a.addEventListener("click", function (ev) {
-        var hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeObject);
-        if (!hasBridge) { return; }
-        ev.preventDefault();
-        bridgePost("openUrl", { url: s.url || "" });
+      a.addEventListener("click", function () {
+        // 交给 WKWebView 原生导航,侧滑即返回,桥接断了也不影响
       });
       grid.appendChild(a);
     });
