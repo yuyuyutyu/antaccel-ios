@@ -1,0 +1,12 @@
+name: mactest
+on:
+  workflow_dispatch:
+jobs:
+  m14:
+    runs-on: macos-14
+    steps:
+      - run: sw_vers; xcodebuild -version
+  m13:
+    runs-on: macos-13
+    steps:
+      - run: sw_vers
