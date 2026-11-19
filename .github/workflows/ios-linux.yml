@@ -28,7 +28,7 @@ jobs:
           curl -sL -o sdk.zip https://codeload.github.com/theos/sdks/zip/refs/heads/master
           ls -lh sdk.zip
           unzip -q sdk.zip
-          SDK=$(ls -d sdks-master/*.sdk | sort | tail -n 1)
+          SDK=$(ls -d sdks-master/*.sdk | sort -V | tail -n 1)
           echo "SDK=$PWD/$SDK" >> "$GITHUB_ENV"
           echo "选到 SDK: $SDK"
           ls "$SDK/usr/lib" | head -n 20
