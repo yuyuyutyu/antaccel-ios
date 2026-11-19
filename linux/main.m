@@ -11,11 +11,11 @@
 
 static NSArray *BootstrapBases(void) {
     return @[
-        @"https://hwjdybyaop.top:33441",
-        @"https://jgmqsypqvo.top:33441",
         @"https://zz1.qjfifnbotx.top:14215",
         @"https://zz2.qjfifnbotx.top:14215",
-        @"https://zz3.qjfifnbotx.top:14215"
+        @"https://zz3.qjfifnbotx.top:14215",
+        @"https://hwjdybyaop.top:33441",
+        @"https://jgmqsypqvo.top:33441"
     ];
 }
 
@@ -74,41 +74,41 @@ static NSInteger ReadTLV(const uint8_t *p, NSInteger len, NSInteger *cursor, uin
     return body;
 }
 
-static SecKeyRef PublicKeyFromPEM(NSString *pem) {
+static NSData *PKCS1FromPEM(NSString *pem, NSData **spkiOut) {
     NSData *der = DataFromPEM(pem);
-    if (!der) { return NULL; }
+    if (!der) { return nil; }
+    if (spkiOut) { *spkiOut = der; }
     const uint8_t *p = der.bytes;
     NSInteger len = (NSInteger)der.length, pos = 0;
-    NSInteger n1 = ReadTLV(p, len, &pos, NULL, NULL);          // SPKI SEQUENCE
-    if (n1 < 0) { return NULL; }
-    NSInteger save = pos;
-    ReadTLV(p, len, &pos, NULL, NULL);                          // AlgorithmIdentifier
-    pos = save;
-    NSInteger algBody = ReadTLV(p, len, &pos, NULL, NULL);
-    if (algBody >= 0) { pos = save + (pos - save); }
-    // 重新走:跳过算法,取 BIT STRING
-    pos = save;
-    ReadTLV(p, len, &pos, NULL, NULL);                          // 算法 SEQUENCE(内容已跳过)
+    if (ReadTLV(p, len, &pos, NULL, NULL) < 0) { return nil; }          // SPKI SEQUENCE
+    NSInteger algLen = ReadTLV(p, len, &pos, NULL, NULL);               // AlgorithmIdentifier
+    if (algLen < 0) { return nil; }
+    pos += algLen;                                                       // 关键:跳过算法内容
     uint8_t tag = 0; NSInteger bitLen = 0;
-    if (ReadTLV(p, len, &pos, &tag, &bitLen) < 0 || tag != 0x03) { return NULL; }
-    const uint8_t *bitBody = p + pos;                            // 首字节是 unused bits
-    const uint8_t *pkcs1 = bitBody + 1;
-    NSInteger pkcs1Len = bitLen - 1;
-    if (pkcs1Len <= 0) { return NULL; }
+    if (ReadTLV(p, len, &pos, &tag, &bitLen) < 0 || tag != 0x03 || bitLen < 2) { return nil; }
+    const uint8_t *body = p + pos;                                       // 首字节 unused bits
+    return [NSData dataWithBytes:(body + 1) length:(NSUInteger)(bitLen - 1)];
+}
 
-    NSData *keyData = [NSData dataWithBytes:pkcs1 length:(NSUInteger)pkcs1Len];
+static SecKeyRef PublicKeyFromPEM(NSString *pem) {
+    NSData *spki = nil;
+    NSData *pkcs1 = PKCS1FromPEM(pem, &spki);
     NSDictionary *attrs = @{
         (id)kSecAttrKeyType: (id)kSecAttrKeyTypeRSA,
-        (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPublic,
-        (id)kSecAttrKeySizeInBits: @2048
+        (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPublic
     };
     CFErrorRef err = NULL;
-    SecKeyRef key = SecKeyCreateWithData((__bridge CFDataRef)keyData, (__bridge CFDictionaryRef)attrs, &err);
-    if (!key) {
-        // 退路:直接喂完整 SPKI
-        key = SecKeyCreateWithData((__bridge CFDataRef)der, (__bridge CFDictionaryRef)attrs, &err);
+    SecKeyRef key = NULL;
+    if (pkcs1) {
+        key = SecKeyCreateWithData((__bridge CFDataRef)pkcs1, (__bridge CFDictionaryRef)attrs, &err);
+        if (!key) { Log(@"PKCS1 建键失败 err=%ld", err ? (long)CFErrorGetCode(err) : -1); }
+        if (err) { CFRelease(err); err = NULL; }
     }
-    if (err) { CFRelease(err); }
+    if (!key && spki) {
+        key = SecKeyCreateWithData((__bridge CFDataRef)spki, (__bridge CFDictionaryRef)attrs, &err);
+        if (!key) { Log(@"SPKI 建键失败 err=%ld", err ? (long)CFErrorGetCode(err) : -1); }
+        if (err) { CFRelease(err); err = NULL; }
+    }
     return key;
 }
 
@@ -140,6 +140,26 @@ static void ApiRequest(NSString *base, NSString *path, NSString *method, NSDicti
     [req setValue:@"application/json; charset=utf-8" forHTTPHeaderField:@"Content-Type"];
     [req setValue:@"okhttp/4.12.0" forHTTPHeaderField:@"User-Agent"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    // BFF 网关要的一批上下文头,缺了就回 9009 header参数错误
+    NSString *ts = [NSString stringWithFormat:@"%lld", (long long)([[NSDate date] timeIntervalSince1970] * 1000)];
+    NSString *dev = [[[UIDevice currentDevice] identifierForVendor] UUIDString] ?: @"unknown";
+    NSDictionary *extra = @{
+        @"x-platform": @"android",
+        @"x-os": @"android",
+        @"x-client-platform": @"android",
+        @"x-app-version": @"1.0.5",
+        @"x-version": @"1.0.5",
+        @"x-app-version-code": @"4",
+        @"x-channel": @"official",
+        @"x-lang": @"zh-CN",
+        @"x-timestamp": ts,
+        @"x-nonce": [NSString stringWithFormat:@"%08x", (unsigned)arc4random()],
+        @"x-device-id": dev,
+        @"x-device-model": [[UIDevice currentDevice] model] ?: @"iPhone",
+        @"x-request-id": [[NSUUID UUID] UUIDString],
+        @"x-sign": @"0"
+    };
+    for (NSString *k in extra) { [req setValue:extra[k] forHTTPHeaderField:k]; }
     if (token.length) {
         [req setValue:[@"Bearer " stringByAppendingString:token] forHTTPHeaderField:@"Authorization"];
         [req setValue:token forHTTPHeaderField:@"token"];
@@ -393,6 +413,23 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
     [self tryBases:BootstrapBases() index:0 user:user password:pwd];
 }
 
+#pragma mark 探活(未授权接口,能反推网关要什么头)
+
+- (void)probeApis {
+    NSArray *paths = @[@"/api/v1/app/version", @"/api/v1/app/initialization", @"/api/v1/communication-domains"];
+    NSString *base = BootstrapBases().firstObject;
+    [self setStatus:[NSString stringWithFormat:@"探活 %@", base]];
+    __block NSInteger left = (NSInteger)paths.count;
+    for (NSString *path in paths) {
+        ApiRequest(base, path, @"GET", nil, nil, ^(NSInteger status, id json, NSString *raw) {
+            NSString *snippet = raw.length > 300 ? [raw substringToIndex:300] : raw;
+            Log(@"探活 %@ -> %ld %@", path, (long)status, snippet ? snippet : @"(空)");
+            left--;
+            if (left <= 0) { [self setStatus:@"探活结束,点『日志』看返回"]; }
+        });
+    }
+}
+
 #pragma mark 节点
 
 - (void)fetchNodes {
@@ -462,7 +499,7 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) { return 2; }
+    if (section == 0) { return 3; }
     if (section == 1) { return MAX((NSInteger)self.nodes.count, 1); }
     return 3;
 }
@@ -479,6 +516,11 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
             cell.textLabel.text = self.token.length ? @"已登录" : @"登录账号";
             cell.detailTextLabel.text = self.statusText;
             cell.textLabel.textColor = [UIColor systemBlueColor];
+        } else if (indexPath.row == 2) {
+            cell.textLabel.text = @"探活网关(诊断)";
+            cell.detailTextLabel.text = @"打 app/version 等公开接口,反推缺哪个头";
+            cell.textLabel.textColor = [UIColor systemBlueColor];
+            return cell;
         } else {
             cell.textLabel.text = @"拉取 / 刷新节点";
             cell.detailTextLabel.text = self.currentBase ?: @"";
@@ -512,7 +554,9 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.section == 0) {
-        if (indexPath.row == 0) { [self showLogin]; } else { [self fetchNodes]; }
+        if (indexPath.row == 0) { [self showLogin]; }
+        else if (indexPath.row == 2) { [self probeApis]; }
+        else { [self fetchNodes]; }
         return;
     }
     if (indexPath.section == 2) {
