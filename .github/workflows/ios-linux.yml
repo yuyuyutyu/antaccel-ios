@@ -51,6 +51,8 @@ jobs:
           file "$APP/AntiAccel"
           ls -lh "$APP/AntiAccel"
           python3 linux/check_macho.py "$APP/AntiAccel"
+          python3 linux/fix_platform.py "$APP/AntiAccel"
+          python3 linux/check_macho.py "$APP/AntiAccel"
 
       - name: 组装 App 包
         run: |
