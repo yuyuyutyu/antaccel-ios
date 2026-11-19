@@ -6,7 +6,6 @@
 #import <UIKit/UIKit.h>
 #import <WebKit/WebKit.h>
 #import <Security/Security.h>
-#import <stdarg.h>
 
 #pragma mark - 全局
 
@@ -361,7 +360,7 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
 - (void)postLogin:(NSString *)base body:(NSDictionary *)body user:(NSString *)user password:(NSString *)pwd
           attempt:(NSUInteger)attempt bases:(NSArray *)bases index:(NSUInteger)i {
     Log(@"登录尝试 #%lu -> %@/api/v1/auth/login", (unsigned long)attempt, base);
-    ApiRequest(base, @"/api/v1/auth/login", @"POST", body, nil, ^(NSInteger status, id json, NSString *raw) {
+    ApiCallback done = ^(NSInteger status, id json, NSString *raw) {
         NSString *token = ExtractToken(json);
         if (token.length) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -386,7 +385,8 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self tryBases:bases index:i + 1 user:user password:pwd];
         });
-    }];
+    };
+    ApiRequest(base, @"/api/v1/auth/login", @"POST", body, nil, done);
 }
 
 - (void)doLogin:(NSString *)user password:(NSString *)pwd {
@@ -399,7 +399,7 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
     if (self.token.length == 0) { [self showLogin]; return; }
     NSString *base = self.currentBase ?: BootstrapBases().firstObject;
     [self setStatus:@"拉取节点…"];
-    ApiRequest(base, @"/api/v1/nodes", @"GET", nil, self.token, ^(NSInteger status, id json, NSString *raw) {
+    ApiCallback done = ^(NSInteger status, id json, NSString *raw) {
         NSMutableArray *found = [NSMutableArray array];
         if (json) { CollectNodes(json, found); }
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -411,7 +411,8 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
                 : [NSString stringWithFormat:@"接口 %ld 未解析出节点,点『日志』看原始返回", (long)status];
             [self.tableView reloadData];
         });
-    }];
+    };
+    ApiRequest(base, @"/api/v1/nodes", @"GET", nil, self.token, done);
 }
 
 #pragma mark 导出
@@ -543,7 +544,7 @@ static NSString *BuildSingBoxJSON(NSArray *nodes) {
 
     WKWebView *web = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:config];
     web.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    web.uiDelegate = self;
+    web.UIDelegate = self;
     web.navigationDelegate = self;
     web.allowsBackForwardNavigationGestures = YES;
     [self.view addSubview:web];
