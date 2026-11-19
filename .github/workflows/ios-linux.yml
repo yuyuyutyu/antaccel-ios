@@ -46,7 +46,7 @@ jobs:
           fi
           clang -target arm64-apple-ios14.0 -isysroot "$SDK" -fobjc-arc -O2 $STARTFLAGS \
             -framework UIKit -framework WebKit -framework Foundation \
-            -fuse-ld=lld -Wl,-platform_version,ios,14.0,16.5 \
+            -fuse-ld=lld -Wl,-platform_version,ios,14.0,16.5 -Wl,-fixup_chains \
             linux/main.m -o "$APP/AntiAccel"
           file "$APP/AntiAccel"
           ls -lh "$APP/AntiAccel"
