@@ -1,0 +1,74 @@
+name: build-ipa-linux
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 工具链
+        run: |
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang lld zip unzip > /dev/null
+          clang --version | head -n 1
+          if ! command -v ld64.lld >/dev/null 2>&1; then
+            sudo ln -sf "$(command -v lld)" /usr/bin/ld64.lld || true
+          fi
+          ls -l /usr/bin/ld64.lld || echo "no ld64.lld"
+          lld -flavor darwin --version || true
+
+      - name: 拉 iOS SDK
+        run: |
+          set -e
+          curl -sL -o sdk.zip https://codeload.github.com/theos/sdks/zip/refs/heads/master
+          ls -lh sdk.zip
+          unzip -q sdk.zip
+          SDK=$(ls -d sdks-master/*.sdk | sort | tail -n 1)
+          echo "SDK=$PWD/$SDK" >> "$GITHUB_ENV"
+          echo "选到 SDK: $SDK"
+          ls "$SDK/usr/lib" | head -n 20
+          ls "$SDK/System/Library/Frameworks/UIKit.framework" | head -n 5
+
+      - name: 交叉编译
+        run: |
+          set -e
+          APP="$PWD/build/Payload/AntiAccel.app"
+          mkdir -p "$APP"
+          STARTFLAGS=""
+          if [ ! -f "$SDK/usr/lib/crt1.o" ]; then
+            echo "SDK 里没有 crt1.o,改用 -nostartfiles -e _main"
+            STARTFLAGS="-nostartfiles -e _main"
+          fi
+          clang -target arm64-apple-ios14.0 -isysroot "$SDK" -fobjc-arc -O2 $STARTFLAGS \
+            -framework UIKit -framework WebKit -framework Foundation \
+            -fuse-ld=lld \
+            linux/main.m -o "$APP/AntiAccel"
+          file "$APP/AntiAccel"
+          ls -lh "$APP/AntiAccel"
+          python3 linux/check_macho.py "$APP/AntiAccel"
+
+      - name: 组装 App 包
+        run: |
+          set -e
+          APP="$PWD/build/Payload/AntiAccel.app"
+          cp linux/Info.plist "$APP/Info.plist"
+          cp linux/www/index.html "$APP/index.html"
+          cp linux/icons/*.png "$APP/"
+          printf 'APPL????' > "$APP/PkgInfo"
+          cd build
+          zip -qry ../AntiAccel-unsigned.ipa Payload
+          cd ..
+          ls -lh AntiAccel-unsigned.ipa
+          unzip -l AntiAccel-unsigned.ipa | head -n 20
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: AntiAccel-unsigned-ipa
+          path: AntiAccel-unsigned.ipa
+          if-no-files-found: error
