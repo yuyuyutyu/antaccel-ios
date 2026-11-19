@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>导航</title>
+<style>
+  :root { --bg:#f2f2f7; --card:#ffffff; --text:#111111; --sub:#70707a; --accent:#0a84ff; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; padding:14px 14px 48px; font-family:-apple-system,"PingFang SC",Helvetica,sans-serif;
+         background:var(--bg); color:var(--text); -webkit-text-size-adjust:100%; }
+  .hero { background:linear-gradient(135deg,#0a84ff,#5e5ce6); border-radius:16px; padding:18px; color:#fff; margin-bottom:14px; }
+  .hero h1 { margin:0 0 6px; font-size:20px; font-weight:700; }
+  .hero p { margin:0; font-size:13px; opacity:.9; }
+  .search { width:100%; padding:11px 14px; border-radius:12px; border:1px solid #d8d8de;
+            background:var(--card); font-size:15px; outline:none; margin-bottom:14px; }
+  .search:focus { border-color:var(--accent); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .card { background:var(--card); border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:6px;
+          text-decoration:none; color:var(--text); border:1px solid #ececf1; }
+  .card:active { transform:scale(.97); }
+  .name { font-size:15px; font-weight:600; }
+  .desc { font-size:12px; color:var(--sub); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2;
+          -webkit-box-orient:vertical; overflow:hidden; }
+  .tag { align-self:flex-start; font-size:10px; padding:2px 6px; border-radius:6px; background:#e8f1ff; color:var(--accent); }
+  .toolbar { display:flex; gap:10px; margin:16px 0 0; }
+  .btn { flex:1; padding:12px; border-radius:12px; border:none; font-size:14px; font-weight:600;
+         background:#e8f1ff; color:var(--accent); }
+  .btn.dark { background:#1c1c1e; color:#fff; }
+  .foot { margin-top:22px; font-size:11px; color:var(--sub); line-height:1.6; }
+  .empty { padding:30px; text-align:center; color:var(--sub); font-size:13px; display:none; }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <h1>安心加速器 · iOS 壳</h1>
+    <p>界面数据取自原 APK 的 nav_default_home.json</p>
+  </div>
+  <input id="q" class="search" type="search" placeholder="搜索站点名称 / 地址">
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty">没有匹配的站点</div>
+  <div class="toolbar">
+    <button class="btn" onclick="pingNative()">调用原生 toast</button>
+    <button class="btn dark" onclick="askAppInfo()">拿原生 App 信息</button>
+  </div>
+  <div class="foot">桥接协议复刻自 assets/js/NativeObject.js:window.webkit.messageHandlers.nativeObject.postWithCallback(JSON)。</div>
+
+<script>
+  var NAV = window.__NAV_JSON__ || { hotSites: [] };
+  var SITES = Array.isArray(NAV.hotSites) ? NAV.hotSites : [];
+
+  function bridgePost(command, args, callback) {
+    var request = { command: command, args: args || "" };
+    if (callback) {
+      var key = "cb_" + new Date().getTime() + "_" + Math.floor(Math.random() * 1000);
+      window.__pending = window.__pending || {};
+      window.__pending[key] = callback;
+      request.callback = key;
+    }
+    try {
+      window.webkit.messageHandlers.nativeObject.postWithCallback(JSON.stringify(request));
+    } catch (e) {
+      alert("原生桥接不可用: " + e);
+    }
+  }
+
+  window.nativeObjectCallback = function (payload) {
+    if (!payload) { return; }
+    var pending = window.__pending || {};
+    var fn = pending[payload.callback];
+    if (typeof fn === "function") { fn(payload.args); delete pending[payload.callback]; }
+  };
+
+  function pingNative() { bridgePost("toast", { text: "原生桥接通了" }); }
+  function askAppInfo() {
+    bridgePost("getAppInfo", {}, function (info) {
+      alert("原生返回: " + JSON.stringify(info));
+    });
+  }
+
+  function render(keyword) {
+    var grid = document.getElementById("grid");
+    var empty = document.getElementById("empty");
+    grid.innerHTML = "";
+    var key = (keyword || "").trim().toLowerCase();
+    var list = SITES.filter(function (s) {
+      if (!key) { return true; }
+      var name = (s.name || "").toLowerCase();
+      var url = (s.url || "").toLowerCase();
+      var desc = (s.description || "").toLowerCase();
+      return name.indexOf(key) >= 0 || url.indexOf(key) >= 0 || desc.indexOf(key) >= 0;
+    });
+    empty.style.display = list.length ? "none" : "block";
+    list.forEach(function (s) {
+      var a = document.createElement("a");
+      a.className = "card";
+      a.href = s.url || "#";
+      var name = document.createElement("div");
+      name.className = "name";
+      name.textContent = s.name || "未命名";
+      var desc = document.createElement("div");
+      desc.className = "desc";
+      desc.textContent = s.description || (s.url || "");
+      a.appendChild(name);
+      a.appendChild(desc);
+      if (s.recommended) {
+        var tag = document.createElement("div");
+        tag.className = "tag";
+        tag.textContent = "推荐";
+        a.appendChild(tag);
+      }
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        bridgePost("openUrl", { url: s.url || "" });
+      });
+      grid.appendChild(a);
+    });
+  }
+
+  document.getElementById("q").addEventListener("input", function (ev) {
+    render(ev.target.value);
+  });
+
+  render("");
+</script>
+</body>
+</html>

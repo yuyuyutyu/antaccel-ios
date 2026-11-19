@@ -1,0 +1,9 @@
+.DS_Store
+build/
+build-unsigned/
+*.ipa
+*.p12
+*.mobileprovision
+signing/
+__pycache__/
+*.pyc
