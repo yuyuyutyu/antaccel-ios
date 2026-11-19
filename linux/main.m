@@ -17,6 +17,7 @@ static NSString * const kKeyId       = @"client-rsa-prod2-v1";
 static NSString * const kChannelCode = @"2d21bee8";
 static NSString * const kDistChannel = @"free";
 static NSString * const kEmptyHash   = @"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+static NSString * const kEmbeddedToken = @"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkZXZpY2VfaWQiOiIyMTA0YmY0NGYzOWJiNDU3IiwiZXhwIjoxNzk1NzI0OTY4LCJpYXQiOjE3OTUxMjAxNjksInVzZXJfaWQiOjk1NDQ5MDgwMzI1NDcyMjU3fQ.UcQioRMIkE5n2wb1yrnB4F7eLRfm41DbnAX2TfH9isY";
 
 static NSMutableArray *gLog = nil;
 static void Log(NSString *fmt, ...) {
@@ -146,7 +147,11 @@ static NSString *TokenPath(void) {
     return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"arktoken.txt"];
 }
 static void SaveToken(NSString *t) { gToken = t; [t writeToFile:TokenPath() atomically:YES encoding:NSUTF8StringEncoding error:NULL]; }
-static void LoadToken(void) { gToken = [NSString stringWithContentsOfFile:TokenPath() encoding:NSUTF8StringEncoding error:NULL]; }
+static void LoadToken(void) {
+    NSString *s = [NSString stringWithContentsOfFile:TokenPath() encoding:NSUTF8StringEncoding error:NULL];
+    s = [s stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    gToken = s.length ? s : kEmbeddedToken;
+}
 
 static NSDictionary *JWTClaims(NSString *jwt) {
     NSArray *parts = [jwt componentsSeparatedByString:@"."];
