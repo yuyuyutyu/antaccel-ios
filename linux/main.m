@@ -20,7 +20,7 @@
 
     WKWebView *web = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:config];
     web.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    web.uiDelegate = self;
+    web.UIDelegate = self;
     web.navigationDelegate = self;
     web.allowsBackForwardNavigationGestures = YES;
     [self.view addSubview:web];
