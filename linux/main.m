@@ -319,12 +319,12 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
     ArkCallAsync(@"GET", @"/api/v1/users/me", [NSString stringWithFormat:@"channelCode=%@", kChannelCode], nil, ^(NSInteger status, id json) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if ([json isKindOfClass:[NSDictionary class]] && [json[@"code"] intValue] == 0) {
-                self->gMe = json[@"data"][@"user"];
-                Log(@"用户: %@", self->gMe[@"username"]);
+                gMe = json[@"data"][@"user"];
+                Log(@"用户: %@", gMe[@"username"]);
                 [self refresh];
             } else {
                 Log(@"token 无效: %@", json);
-                [self reload];
+                [self.tableView reloadData];
             }
         });
     });
@@ -431,7 +431,7 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if ([json isKindOfClass:[NSDictionary class]] && [json[@"code"] intValue] == 0) {
                 self.connected = json[@"data"];
-                self->gConfig = BuildSingBox(n, self.connected);
+                gConfig = BuildSingBox(n, self.connected);
                 Log(@"会话密码: %@", self.connected[@"password"]);
                 [self.tableView reloadData];
                 [self alert:[NSString stringWithFormat:@"已连接 %@\n密码已签发，去「配置」分享给 sing-box", n[@"name"]]];
