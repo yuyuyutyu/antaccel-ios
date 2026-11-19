@@ -425,22 +425,27 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
 }
 
 - (void)connectNode:(NSDictionary *)n {
-    [self alert:[NSString stringWithFormat:@"正在连接 %@ …", n[@"name"]]];
+    [self alert:[NSString stringWithFormat:@"正在连接 %@ ...", n[@"name"]]];
     NSDictionary *body = @{ @"nodeId": n[@"nodeId"] };
+    __weak NodesViewController *weakSelf = self;
     ArkCallAsync(@"POST", @"/api/v1/nodes/connect", @"", body, ^(NSInteger status, id json) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if ([json isKindOfClass:[NSDictionary class]] && [json[@"code"] intValue] == 0) {
-                self.connected = json[@"data"];
-                gConfig = BuildSingBox(n, self.connected);
-                Log(@"会话密码: %@", self.connected[@"password"]);
-                [self.tableView reloadData];
-                [self alert:[NSString stringWithFormat:@"已连接 %@\n密码已签发，去「配置」分享给 sing-box", n[@"name"]]];
-            } else {
-                Log(@"connect 失败: %@", json);
-                [self alert:[NSString stringWithFormat:@"连接失败: %@", json]];
-            }
+            [weakSelf handleConnect:json node:n];
         });
-    }];
+    });
+}
+
+- (void)handleConnect:(id)json node:(NSDictionary *)n {
+    if ([json isKindOfClass:[NSDictionary class]] && [json[@"code"] intValue] == 0) {
+        self.connected = json[@"data"];
+        gConfig = BuildSingBox(n, self.connected);
+        Log(@"session password: %@", self.connected[@"password"]);
+        [self.tableView reloadData];
+        [self alert:[NSString stringWithFormat:@"已连接 %@,去「配置」分享", n[@"name"]]];
+    } else {
+        Log(@"connect failed: %@", json);
+        [self alert:@"连接失败,看日志"];
+    }
 }
 
 - (void)shareConfig {
