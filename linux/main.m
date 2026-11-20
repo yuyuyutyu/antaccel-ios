@@ -269,7 +269,17 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
     };
     NSDictionary *cfg = @{
         @"log": @{ @"level": @"warn", @"timestamp": @YES },
-        @"inbounds": @[ @{ @"type": @"tun", @"tag": @"tun-in", @"address": @[@"172.19.0.1/30"], @"mtu": @9000,
+        @"dns": @{
+            @"servers": @[
+                @{ @"type": @"local", @"tag": @"dns-local" },
+                @{ @"type": @"https", @"tag": @"dns-remote", @"server": @"1.1.1.1", @"server_port": @443,
+                   @"path": @"/dns-query", @"detour": @"auto",
+                   @"tls": @{ @"enabled": @YES, @"server_name": @"cloudflare-dns.com" } }
+            ],
+            @"rules": @[],
+            @"final": @"dns-remote"
+        },
+        @"inbounds": @[ @{ @"type": @"tun", @"tag": @"tun-in", @"address": @[@"172.19.0.1/30"], @"mtu": @1400,
                            @"auto_route": @YES, @"strict_route": @NO, @"stack": @"gvisor" } ],
         @"outbounds": @[ @{ @"type": @"urltest", @"tag": @"auto", @"outbounds": @[ tag ],
                              @"url": @"http://cp.cloudflare.com/generate_204",
@@ -277,7 +287,7 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
                           out, @{ @"type": @"direct", @"tag": @"direct" }, @{ @"type": @"block", @"tag": @"block" } ],
         @"route": @{ @"rules": @[ @{ @"action": @"sniff" }, @{ @"protocol": @"dns", @"action": @"hijack-dns" },
                                   @{ @"ip_is_private": @YES, @"outbound": @"direct" } ],
-                     @"final": @"auto", @"auto_detect_interface": @YES },
+                     @"final": @"auto", @"auto_detect_interface": @YES, @"default_domain_resolver": @{ @"server": @"dns-local" } },
         @"experimental": @{ @"cache_file": @{ @"enabled": @YES } }
     };
     NSData *d = [NSJSONSerialization dataWithJSONObject:cfg options:NSJSONWritingPrettyPrinted error:NULL];
