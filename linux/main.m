@@ -17,7 +17,7 @@ static NSString * const kKeyId       = @"client-rsa-prod2-v1";
 static NSString * const kChannelCode = @"2d21bee8";
 static NSString * const kDistChannel = @"free";
 static NSString * const kEmptyHash   = @"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-static NSString * const kEmbeddedToken = @"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkZXZpY2VfaWQiOiIyMTA0YmY0NGYzOWJiNDU3IiwiZXhwIjoxNzk1NzI0OTY4LCJpYXQiOjE3OTUxMjAxNjksInVzZXJfaWQiOjk1NDQ5MDgwMzI1NDcyMjU3fQ.UcQioRMIkE5n2wb1yrnB4F7eLRfm41DbnAX2TfH9isY";
+static NSString * const kEmbeddedToken = @"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkZXZpY2VfaWQiOiIyMTA0YmY0NGYzOWJiNDU3IiwiZXhwIjoxNzk2MTEyMDk5LCJpYXQiOjE3OTU1MDcyOTksInVzZXJfaWQiOjk1NDQ5MDgwMzI1NDcyMjU3fQ.xpwntoj6N8GxGXhAC3dhigEpoU0us0jiqKVQP3Gohb0";
 
 static NSMutableArray *gLog = nil;
 static void Log(NSString *fmt, ...) {
@@ -316,6 +316,7 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
     [super viewDidLoad];
     self.title = @"安心加速器";
     LoadToken();
+    [self autoRenew:NO];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"日志" style:UIBarButtonItemStylePlain target:self action:@selector(showLog)];
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"刷新" style:UIBarButtonItemStylePlain target:self action:@selector(refresh)];
     if (gToken.length) [self loadMe];
@@ -331,6 +332,40 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"日志" message:LogText() preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)autoRenew:(BOOL)force {
+    NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+    NSString *u = [ud stringForKey:@"ark_user"];
+    NSString *p = [ud stringForKey:@"ark_pass"];
+    if (!u.length || !p.length) { if (force) [self alert:@"先登录一次,后面才能自动续签"]; return; }
+    long long exp = 0;
+    if (gToken.length) { NSDictionary *c = JWTClaims(gToken); exp = [c[@"exp"] longLongValue]; }
+    long long now = (long long)[[NSDate date] timeIntervalSince1970];
+    if (!force && exp > now + 43200) return;
+    Log(@"续签中: %@", u);
+    NSDictionary *body = @{ @"identifier": u, @"password": p };
+    __weak NodesViewController *ws = self;
+    ArkCallAsync(@"POST", @"/api/v1/auth/login", @"", body, ^(NSInteger status, id json) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            id data = [json isKindOfClass:[NSDictionary class]] ? json[@"data"] : nil;
+            NSString *tok = [data isKindOfClass:[NSDictionary class]] ? data[@"token"] : nil;
+            if ([tok isKindOfClass:[NSString class]] && [tok length]) {
+                SaveToken(tok); gDeviceId = nil;
+                NSDictionary *c = JWTClaims(tok);
+                long long e = [c[@"exp"] longLongValue];
+                NSDateFormatter *f = [[NSDateFormatter alloc] init];
+                f.dateFormat = @"MM-dd HH:mm";
+                NSString *ds = [f stringFromDate:[NSDate dateWithTimeIntervalSince1970:e]];
+                Log(@"续签成功,到期 %@", ds);
+                if (force) [ws alert:[NSString stringWithFormat:@"续签成功,到期 %@", ds]];
+                [ws loadMe];
+            } else {
+                Log(@"续签失败: %@", json);
+                if (force) [ws alert:[NSString stringWithFormat:@"续签失败: %@", json]];
+            }
+        });
+    });
 }
 
 - (void)loadMe {
@@ -371,7 +406,7 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
         NSString *u = a.textFields[0].text;
         NSString *p = a.textFields[1].text;
         if (!u.length || !p.length) return;
-        NSDictionary *body = @{ @"account": u, @"password": p };
+        NSDictionary *body = @{ @"identifier": u, @"password": p };
         ArkCallAsync(@"POST", @"/api/v1/auth/login", @"", body, ^(NSInteger status, id json) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 NSString *tok = nil;
@@ -380,6 +415,8 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
                     if ([data isKindOfClass:[NSDictionary class]]) tok = data[@"token"] ?: data[@"accessToken"];
                     if ([tok isKindOfClass:[NSString class]] && [tok length]) {
                         SaveToken(tok); gDeviceId = nil;
+                        [[NSUserDefaults standardUserDefaults] setObject:u forKey:@"ark_user"];
+                        [[NSUserDefaults standardUserDefaults] setObject:p forKey:@"ark_pass"];
                         Log(@"登录成功");
                         [self loadMe];
                         return;
@@ -499,7 +536,7 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return 3;
+    if (section == 0) return 4;
     if (section == 1) return MAX(self.nodes.count, 1);
     return 3;
 }
@@ -507,8 +544,8 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
     if (indexPath.section == 0) {
-        NSArray *t = @[@"登录", @"粘贴 Token", @"清除 Token"];
-        NSArray *s = @[gMe[@"username"] ?: @"账号密码登录", gToken.length ? @"已保存 token" : @"从剪贴板导入 JWT", @"退出登录"];
+        NSArray *t = @[@"登录", @"粘贴 Token", @"续签 Token", @"清除 Token"];
+        NSArray *s = @[gMe[@"username"] ?: @"账号密码登录", gToken.length ? @"已保存 token" : @"从剪贴板导入 JWT", @"用保存的账号密码换新 token", @"退出登录"];
         cell.textLabel.text = t[indexPath.row];
         cell.detailTextLabel.text = s[indexPath.row];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -535,6 +572,7 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
     if (indexPath.section == 0) {
         if (indexPath.row == 0) [self doLogin];
         else if (indexPath.row == 1) [self pasteToken];
+        else if (indexPath.row == 2) [self autoRenew:YES];
         else { SaveToken(@""); gMe = nil; gToken = nil; self.nodes = [NSMutableArray array]; [self.tableView reloadData]; }
     } else if (indexPath.section == 1) {
         if (self.nodes.count) [self connectNode:self.nodes[indexPath.row]];
