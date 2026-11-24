@@ -35,9 +35,17 @@ static NSString *LogText(void) { return gLog ? [gLog componentsJoinedByString:@"
 static NSString *B64(NSData *d) { return d ? [d base64EncodedStringWithOptions:0] : @""; }
 static NSData *UB64(NSString *s) {
     if (!s) return nil;
-    s = [s stringByReplacingOccurrencesOfString:@"\n" withString:@""];
-    s = [s stringByReplacingOccurrencesOfString:@"\r" withString:@""];
-    return [[NSData alloc] initWithBase64EncodedString:s options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    NSMutableString *m = [s mutableCopy];
+    [m replaceOccurrencesOfString:@"\n" withString:@"" options:0 range:NSMakeRange(0, m.length)];
+    [m replaceOccurrencesOfString:@"\r" withString:@"" options:0 range:NSMakeRange(0, m.length)];
+    [m replaceOccurrencesOfString:@"\t" withString:@"" options:0 range:NSMakeRange(0, m.length)];
+    [m replaceOccurrencesOfString:@" " withString:@"" options:0 range:NSMakeRange(0, m.length)];
+    [m replaceOccurrencesOfString:@"-" withString:@"+" options:0 range:NSMakeRange(0, m.length)];
+    [m replaceOccurrencesOfString:@"_" withString:@"/" options:0 range:NSMakeRange(0, m.length)];
+    while (m.length % 4 != 0) [m appendString:@"="];
+    NSData *d = [[NSData alloc] initWithBase64EncodedString:m options:0];
+    if (!d) d = [[NSData alloc] initWithBase64EncodedString:m options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    return d;
 }
 static NSData *SHA256(NSData *d) {
     unsigned char out[CC_SHA256_DIGEST_LENGTH];
@@ -355,7 +363,7 @@ static NSString *BuildSingBox(NSDictionary *node, NSDictionary *conn) {
                 NSDictionary *c = JWTClaims(tok);
                 long long e = [c[@"exp"] longLongValue];
                 NSDateFormatter *f = [[NSDateFormatter alloc] init];
-                f.dateFormat = @"MM-dd HH:mm";
+                f.dateFormat = @"yyyy-MM-dd HH:mm";
                 NSString *ds = [f stringFromDate:[NSDate dateWithTimeIntervalSince1970:e]];
                 Log(@"续签成功,到期 %@", ds);
                 if (force) [ws alert:[NSString stringWithFormat:@"续签成功,到期 %@", ds]];
